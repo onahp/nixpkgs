@@ -1,31 +1,30 @@
 {
-  autoPatchelfHook,
+  lib,
+  stdenv,
   fetchFromGitHub,
   fetchYarnDeps,
   fixup-yarn-lock,
-  lib,
   makeWrapper,
   nodejs,
-  stdenv,
   yarn,
   yarnBuildHook,
   yarnConfigHook,
   yarnInstallHook,
 }:
 
-stdenv.mkDerivation rec {
-  pname = "pkg";
+stdenv.mkDerivation (finalAttrs: {
+  pname = "yao-pkg";
   version = "6.1.1";
 
   src = fetchFromGitHub {
     owner = "yao-pkg";
-    repo = pname;
-    rev = "v${version}";
+    repo = "pkg";
+    tag = "v${finalAttrs.version}";
     hash = "sha256-AQ+PVIWYgrflDsauxCfmvo40imlTAOW3vXhMtN+eKq4=";
   };
 
   offlineCache = fetchYarnDeps {
-    yarnLock = "${src}/yarn.lock";
+    yarnLock = "${finalAttrs.src}/yarn.lock";
     hash = "sha256-7jIrhIuuHSkfQCnjifgYCEIHi169np78NLhuw6iZRyU=";
   };
 
@@ -48,47 +47,43 @@ stdenv.mkDerivation rec {
     yarnBuildHook
     yarnConfigHook
     yarnInstallHook
-  ] ++ lib.optionals stdenv.hostPlatform.isLinux [ autoPatchelfHook ];
-  autoPatchelfIgnoreMissingDeps = [ "*" ];
+  ];
 
-  configurePhase = # bash
-    ''
-      runHook preConfigure
+  configurePhase = ''
+    runHook preConfigure
 
-      export HOME=$(mktemp -d)
-      yarn config --offline set yarn-offline-mirror "$offlineCache"
-      fixup-yarn-lock yarn.lock
-      yarn --offline --frozen-lockfile --ignore-platform --ignore-scripts --no-progress --non-interactive install
-      patchShebangs node_modules
+    export HOME=$(mktemp -d)
+    yarn config --offline set yarn-offline-mirror ${finalAttrs.offlineCache}
+    fixup-yarn-lock yarn.lock
+    yarn --offline --frozen-lockfile --ignore-platform --ignore-scripts --no-progress --non-interactive install
+    patchShebangs node_modules
 
-      runHook postConfigure
-    '';
+    runHook postConfigure
+  '';
 
-  buildPhase = # bash
-    ''
-      runHook preBuild
+  buildPhase = ''
+    runHook preBuild
 
-      yarn --offline prepare
+    yarn --offline prepare
 
-      runHook postBuild
-    '';
+    runHook postBuild
+  '';
 
-  installPhase = # bash
-    ''
-      runHook preInstall
+  installPhase = ''
+    runHook preInstall
 
-      yarn --offline --production install
+    yarn --offline --production install
 
-      mkdir -p "$out/lib/node_modules/pkg"
-      cp -r . "$out/lib/node_modules/pkg"
+    mkdir -p "$out/lib/node_modules/pkg"
+    cp -r . "$out/lib/node_modules/pkg"
 
-      makeWrapper "${nodejs}/bin/node" "$out/bin/pkg" \
-        --add-flags "$out/lib/node_modules/pkg/lib-es5/bin.js"
+    makeWrapper "${lib.getExe nodejs}" "$out/bin/pkg" \
+      --add-flags "$out/lib/node_modules/pkg/lib-es5/bin.js"
 
-      runHook postInstall
-    '';
+    runHook postInstall
+  '';
 
-  meta = with lib; {
+  meta = {
     description = "Package your Node.js project into an executable";
     longDescription = ''
       This command line interface enables you to package your Node.js project into
@@ -99,8 +94,8 @@ stdenv.mkDerivation rec {
     '';
     mainProgram = "pkg";
     homepage = "https://github.com/yao-pkg/pkg";
-    license = licenses.mit;
-    platforms = platforms.all;
-    maintainers = with maintainers; [ onahp ];
+    license = lib.licenses.mit;
+    inherit (nodejs.meta) platforms;
+    maintainers = with lib.maintainers; [ onahp ];
   };
-}
+})
